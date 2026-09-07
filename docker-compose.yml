@@ -1,0 +1,73 @@
+name: financehub-ssrf
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: financehub
+      POSTGRES_PASSWORD: financehub
+      POSTGRES_DB: financehub
+    volumes:
+      - dbdata:/var/lib/postgresql/data
+    networks:
+      finnet:
+        ipv4_address: 10.5.0.10
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U financehub"]
+      interval: 3s
+      timeout: 3s
+      retries: 10
+
+  # API administrativa INTERNA, SEM autenticação (alvo do SSRF).
+  # Só existe na rede interna: o host NÃO a alcança.
+  internal-api:
+    build: ./internal-api
+    environment:
+      DATABASE_URL: postgresql+psycopg2://financehub:financehub@db:5432/financehub
+    networks:
+      finnet:
+        ipv4_address: 10.5.0.15
+    depends_on:
+      db:
+        condition: service_healthy
+
+  # Backend: fica na borda (acessível ao navegador) e na rede interna.
+  # É essa dupla conexão que o SSRF explora.
+  backend:
+    build: ./backend
+    environment:
+      DATABASE_URL: postgresql+psycopg2://financehub:financehub@db:5432/financehub
+      JWT_SECRET: dev-secret-financehub
+      TX_INTERVAL_SECONDS: "120"   # gera 1 transação por usuário a cada 2 minutos
+    ports:
+      - "8000:8000"
+    networks:
+      edge:
+      finnet:
+        ipv4_address: 10.5.0.20
+    depends_on:
+      db:
+        condition: service_healthy
+
+  # Frontend (React/Vite). Só na borda; faz proxy de /api para o backend.
+  frontend:
+    build: ./frontend
+    ports:
+      - "5180:5173"
+    networks:
+      - edge
+    depends_on:
+      - backend
+
+networks:
+  edge:
+    driver: bridge
+  finnet:
+    driver: bridge
+    internal: true          # sem internet e inacessível a partir do host
+    ipam:
+      config:
+        - subnet: 10.5.0.0/24
+
+volumes:
+  dbdata:
