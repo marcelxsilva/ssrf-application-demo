@@ -1,0 +1,34 @@
+# ---- Dependências / ambientes ----
+node_modules/
+.venv/
+.venv-*/
+venv/
+env/
+
+# ---- Python ----
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# ---- Front-end (build/caches) ----
+dist/
+.vite/
+
+# ---- Documentacao/telas geradas (nao versionar) ----
+docs/
+
+# ---- Artefatos gerados pelas ferramentas de ataque ----
+tools/loot*.json
+
+# ---- Sistema operacional / editores ----
+.DS_Store
+Thumbs.db
+*.swp
+.idea/
+.vscode/
+
+# Observações:
+# - uv.lock e requirements.txt são versionados (reprodutibilidade).
