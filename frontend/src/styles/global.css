@@ -1,0 +1,6 @@
+* { box-sizing: border-box; }
+body { margin: 0; background: #f5f6f8; }
+input:focus { outline: none; }
+a { color: inherit; }
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 4px; }
