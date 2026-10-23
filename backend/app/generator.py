@@ -1,8 +1,9 @@
 """
 Gerador de transações em background.
 
-A cada N segundos (padrão 120 = 2 min) insere UMA transação aleatória para cada
-usuário existente na base, deixando os extratos "vivos" durante a demonstração.
+Roda RUNS_PER_DAY vezes por dia (padrão 5) e, em cada rodada, insere para cada
+usuário um crédito e, opcionalmente, um débito menor que o crédito - o saldo
+sempre tende a subir, mesmo com saídas.
 """
 
 import asyncio
@@ -17,7 +18,11 @@ from .models import Transaction, User
 # limita quantas entregas guardamos por usuário (evita crescer sem limite)
 MAX_DELIVERIES_PER_USER = 15
 
-INTERVAL_SECONDS = int(os.environ.get("TX_INTERVAL_SECONDS", "120"))
+SECONDS_PER_DAY = 86400
+RUNS_PER_DAY = int(os.environ.get("TX_RUNS_PER_DAY", "5"))
+INTERVAL_SECONDS = int(
+    os.environ.get("TX_INTERVAL_SECONDS", str(SECONDS_PER_DAY // RUNS_PER_DAY))
+)
 
 # Modelos de transação: (tipo, descrição, faixa de valor). Débitos são negativos.
 CREDITS = [
@@ -34,37 +39,52 @@ DEBITS = [
     ("transferencia", "PIX enviado", (20, 500)),
 ]
 
+# Teto do débito como fração do crédito da mesma rodada: garante que a entrada
+# cobre a saída e o saldo do usuário fica sempre positivo ao longo do tempo.
+MAX_DEBIT_RATIO = 0.7
 
-def _random_transaction() -> dict:
-    # ~40% créditos, 60% débitos, para os saldos variarem de forma realista.
-    kind, desc, (lo, hi) = random.choice(CREDITS if random.random() < 0.4 else DEBITS)
+
+def _random_credit() -> dict:
+    kind, desc, (lo, hi) = random.choice(CREDITS)
     amount = round(random.uniform(lo, hi), 2)
-    if kind == "debito" or desc == "PIX enviado":
-        amount = -amount
     return {"kind": kind, "description": desc, "amount": amount}
+
+
+def _random_debit(max_amount: float) -> dict | None:
+    if max_amount <= 0 or random.random() >= 0.6:
+        return None
+    kind, desc, (lo, hi) = random.choice(DEBITS)
+    hi = min(hi, max_amount)
+    lo = min(lo, hi)
+    amount = round(random.uniform(lo, hi), 2)
+    return {"kind": kind, "description": desc, "amount": -amount}
 
 
 def generate_once() -> int:
     """
-    Insere uma transação aleatória para cada usuário e, se ele tiver um webhook
-    cadastrado, entrega a notificação. Retorna quantas transações criou.
+    Insere, para cada usuário, um crédito e um débito opcional (sempre menor que o
+    crédito) e entrega webhook se houver. Retorna quantas transações criou.
     """
     db = SessionLocal()
+    created = 0
     try:
         users = db.query(User).all()
         for u in users:
-            data = _random_transaction()
-            tx = Transaction(
-                user_id=u.id, tx_date=date.today(),
-                kind=data["kind"], description=data["description"], amount=data["amount"],
-            )
-            db.add(tx)
-            db.flush()  # garante tx populada antes da entrega
-            if u.webhook_url:
-                deliver(db, u, tx)
-                _trim_deliveries(db, u.id)
+            credit = _random_credit()
+            debit = _random_debit(credit["amount"] * MAX_DEBIT_RATIO)
+            for data in filter(None, [credit, debit]):
+                tx = Transaction(
+                    user_id=u.id, tx_date=date.today(),
+                    kind=data["kind"], description=data["description"], amount=data["amount"],
+                )
+                db.add(tx)
+                db.flush()  # garante tx populada antes da entrega
+                created += 1
+                if u.webhook_url:
+                    deliver(db, u, tx)
+                    _trim_deliveries(db, u.id)
         db.commit()
-        return len(users)
+        return created
     finally:
         db.close()
 
@@ -81,7 +101,7 @@ def _trim_deliveries(db, user_id: int):
 
 async def run_forever():
     """Loop em background: aguarda o intervalo e gera transações, sem derrubar a API."""
-    print(f"[generator] ativo - 1 transação por usuário a cada {INTERVAL_SECONDS}s")
+    print(f"[generator] ativo - {RUNS_PER_DAY}x por dia (a cada {INTERVAL_SECONDS}s)")
     while True:
         await asyncio.sleep(INTERVAL_SECONDS)
         try:
