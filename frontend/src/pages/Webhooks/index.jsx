@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { getConfig, getWebhook, testWebhook, saveWebhook } from '../../services/api'
 import WebhooksView from './Webhooks.view'
 
-const REFRESH_MS = 6000
+const REFRESH_MS = 10000
 
 // Container da página de webhooks: concentra as regras (testar, salvar, atualizar
 // as entregas e a configuração). A view apenas renderiza.
@@ -21,10 +21,17 @@ export default function Webhooks({ token, mode }) {
   useEffect(() => { getConfig().then(setConfig).catch(() => {}) }, [])
 
   useEffect(() => {
-    loadWebhook()
-    const id = setInterval(loadWebhook, REFRESH_MS)
-    return () => clearInterval(id)
-  }, [loadWebhook])
+    let stopped = false
+    let timer
+    const tick = async () => {
+      if (!document.hidden) {
+        try { setWebhook(await getWebhook(token)) } catch {}
+      }
+      if (!stopped) timer = setTimeout(tick, REFRESH_MS)
+    }
+    tick()
+    return () => { stopped = true; clearTimeout(timer) }
+  }, [token])
 
   const handleTest = async () => {
     if (!url.trim()) return
