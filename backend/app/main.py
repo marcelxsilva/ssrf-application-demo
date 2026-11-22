@@ -177,11 +177,16 @@ def secure_webhook_save(
             **_webhook_state(db, user)}
 
 
+CONNECT_TIMEOUT_SECONDS = 1.5
+
+
 async def _perform_request(url: str, *, follow_redirects: bool, timeout: float) -> dict:
     start = time.perf_counter()
     try:
         async with httpx.AsyncClient(
-            timeout=timeout, follow_redirects=follow_redirects, verify=False
+            timeout=httpx.Timeout(timeout, connect=min(timeout, CONNECT_TIMEOUT_SECONDS)),
+            follow_redirects=follow_redirects,
+            verify=False,
         ) as client:
             resp = await client.get(url)
         elapsed = round((time.perf_counter() - start) * 1000, 2)
